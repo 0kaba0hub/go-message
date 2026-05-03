@@ -1,0 +1,59 @@
+name: Check upstream go-message
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'   # every Monday 09:00 UTC
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Check for new upstream release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FORK_BASE: v0.18.1
+        run: |
+          LATEST=$(gh release list --repo emersion/go-message --limit 1 --json tagName -q '.[0].tagName' 2>/dev/null || echo "")
+
+          if [ -z "$LATEST" ]; then
+            echo "No releases found upstream, skipping."
+            exit 0
+          fi
+
+          echo "Upstream latest: $LATEST  Fork base: $FORK_BASE"
+
+          if [ "$LATEST" = "$FORK_BASE" ]; then
+            echo "Fork is up to date."
+            exit 0
+          fi
+
+          # Avoid duplicate issues
+          OPEN=$(gh issue list \
+            --repo "${{ github.repository }}" \
+            --state open \
+            --search "upstream go-message $LATEST in:title" \
+            --json number \
+            --jq 'length')
+
+          if [ "$OPEN" -gt 0 ]; then
+            echo "Issue for $LATEST already exists."
+            exit 0
+          fi
+
+          gh issue create \
+            --repo "${{ github.repository }}" \
+            --title "upstream go-message $LATEST available (fork base: $FORK_BASE)" \
+            --body "## Upstream release detected
+
+          [emersion/go-message](https://github.com/emersion/go-message) published **$LATEST** (our fork base: \`$FORK_BASE\`).
+
+          ### Steps to update the fork
+          1. Review [release notes](https://github.com/emersion/go-message/releases/tag/$LATEST) and [diff](https://github.com/emersion/go-message/compare/$FORK_BASE...$LATEST)
+          2. Merge upstream into fork: \`git fetch upstream && git merge upstream/master\`
+          3. Run \`go test ./...\`
+          4. Bump tag: \`git tag $LATEST && git push origin $LATEST\`
+          5. Update \`go.mod\` replace directive in dependent repos
+          6. Update \`FORK_BASE\` in this workflow to \`$LATEST\`"
