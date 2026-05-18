@@ -1,4 +1,4 @@
-module github.com/emersion/go-message
+module github.com/0kaba0hub/go-message
 
 go 1.26
 
